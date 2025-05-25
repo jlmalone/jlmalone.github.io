@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Knomee Consensus Simulator</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body{font-family:sans-serif;padding:1rem;max-width:900px;margin:auto}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ccc;padding:4px;text-align:center}
+    th{background:#eef}
+    input[type="number"],input[type="checkbox"]{width:90%}
+    .controls{margin-bottom:1rem}
+  </style>
+</head>
+<body>
+  <h1>Knomee Consensus Simulator</h1>
+
+  <details open>
+    <summary><strong>Protocol Parameters</strong></summary>
+    <div class="controls">
+      <label>Double Gold p<sub>DG</sub>: <input type="number" id="pDG" step="0.001" value="0.854"></label>
+      <label>Single Gold p<sub>SG</sub>: <input type="number" id="pSG" step="0.001" value="0.618"></label>
+      <label>T<sub>s</sub> (days): <input type="number" id="Ts" step="1" value="7"></label><br>
+      <label>Voter start V<sub>s</sub>: <input type="number" id="Vs" step="1" value="10"></label>
+      <label>Voter ∞ V<sub>∞</sub>: <input type="number" id="Vinf" step="1" value="3"></label>
+      <label>T<sub>v</sub> (days): <input type="number" id="Tv" step="1" value="7"></label><br>
+      <label>Stake exponent ε: <input type="number" id="eps" step="0.1" value="0.5"></label>
+      <label>Evaluate at t (days): <input type="number" id="evalT" step="0.1" value="0"></label>
+    </div>
+  </details>
+
+  <details open>
+    <summary><strong>Votes</strong></summary>
+    <button id="addRow">Add Vote</button>
+    <table id="voteTable">
+      <thead>
+        <tr><th>Time (days)</th><th>Stake</th><th>Yes?</th><th></th></tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </details>
+
+  <h3>Consensus Metrics at t=<span id="tDisp">0</span> days</h3>
+  <ul>
+    <li>Total voters (V_total): <span id="Vtotal">0</span></li>
+    <li>Yes voters (V_yes): <span id="Vyes">0</span></li>
+    <li>Total stake (S_total): <span id="Stotal">0</span></li>
+    <li>Yes stake (S_yes): <span id="Syes">0</span></li>
+    <li>Adjusted total stake (Σ S<sup>ε</sup>): <span id="Sadj">0</span></li>
+    <li>Adjusted yes stake (Σ S<sup>ε</sup> yes): <span id="Sadjyes">0</span></li>
+    <li>Stake ratio R<sub>S</sub>: <span id="RS">0</span></li>
+    <li>Voter ratio R<sub>V</sub>: <span id="RV">0</span></li>
+    <li>Composite C(t)=R<sub>S</sub>·R<sub>V</sub>: <span id="Cval">0</span></li>
+    <li>Threshold p(t): <span id="pth">0</span></li>
+    <li>Min voters v(t): <span id="vth">0</span></li>
+    <li>Pass? <strong id="pass">NO</strong></li>
+  </ul>
+
+  <div id="plot" style="width:100%;height:450px"></div>
+
+<script>
+const tableBody=document.querySelector('#voteTable tbody');
+function addRow(t=0,stake=0,yes=true){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td><input type='number' value='${t}' step='0.1'></td>
+                <td><input type='number' value='${stake}' step='0.1'></td>
+                <td><input type='checkbox' ${yes?'checked':''}></td>
+                <td><button class='del'>✖</button></td>`;
+  tableBody.appendChild(tr);
+  calc();
+}
+
+document.getElementById('addRow').onclick=()=>addRow();
+
+tableBody.addEventListener('input',calc);
+tableBody.addEventListener('click',e=>{if(e.target.classList.contains('del')){e.target.closest('tr').remove();calc();}});
+
+document.querySelectorAll('.controls input').forEach(el=>el.addEventListener('input',calc));
+
+function calc(){
+  const pDG=parseFloat(pDGInput.value),pSG=parseFloat(pSGInput.value),Ts=parseFloat(TsInput.value);
+  const Vs=parseFloat(VsInput.value),Vinf=parseFloat(VinfInput.value),Tv=parseFloat(TvInput.value);
+  const eps=parseFloat(epsInput.value),tEval=parseFloat(evalTInput.value);
+  tDisp.textContent=tEval;
+
+  const p_t= pSG + (pDG - pSG)*Math.exp(-tEval/ Ts);
+  const v_t= Vinf+ (Vs - Vinf)*Math.exp(- tEval/ Tv);
+  pth.textContent=p_t.toFixed(3);
+  vth.textContent=v_t.toFixed(2);
+
+  let S_yes=0,S_total=0,Sadj_yes=0,Sadj_total=0,V_yes=0,V_total=0;
+  document.querySelectorAll('#voteTable tbody tr').forEach(tr=>{
+    const t=parseFloat(tr.children[0].firstChild.value);
+    const stake=parseFloat(tr.children[1].firstChild.value);
+    const yes=tr.children[2].firstChild.checked;
+    if(!isNaN(stake)){
+      S_total+=stake;
+      const adj=Math.pow(stake,eps);
+      Sadj_total+=adj;
+      if(yes){
+        S_yes+=stake;
+        Sadj_yes+=adj;
+      }
+    }
+    if(!isNaN(t)){
+      V_total++;
+      if(yes) V_yes++;
+    }
+  });
+
+  const RS=Sadj_total?Sadj_yes/Sadj_total:0;
+  const RV=V_total?V_yes/V_total:0;
+  const C=RS*RV;
+
+  document.getElementById('Vtotal').textContent=V_total;
+  document.getElementById('Vyes').textContent=V_yes;
+  document.getElementById('Stotal').textContent=S_total.toFixed(3);
+  document.getElementById('Syes').textContent=S_yes.toFixed(3);
+  document.getElementById('Sadj').textContent=Sadj_total.toFixed(3);
+  document.getElementById('Sadjyes').textContent=Sadj_yes.toFixed(3);
+  RSspan.textContent=RS.toFixed(3);
+  RVspan.textContent=RV.toFixed(3);
+  Cval.textContent=C.toFixed(3);
+
+  const passCond=C>=p_t && V_yes>=v_t && RS>=0.5 && RV>=0.5;
+  pass.textContent=passCond?"YES":"NO";
+  pass.style.color=passCond?"green":"red";
+
+  const time=Array.from({length:300},(_,i)=>i*0.1);
+  const pCurve=time.map(t=>pSG+(pDG-pSG)*Math.exp(-t/Ts));
+  const vCurve=time.map(t=>Vinf+(Vs-Vinf)*Math.exp(-t/Tv));
+  Plotly.newPlot('plot',[
+    {x:time,y:pCurve,name:'p(t) stake threshold',mode:'lines',line:{color:'blue'}},
+    {x:time,y:vCurve,name:'v(t) min voters',mode:'lines',line:{color:'red',dash:'dash'}},
+    {x:[tEval],y:[p_t],mode:'markers',name:'current p(t)',marker:{color:'blue',size:8}},
+    {x:[tEval],y:[v_t],mode:'markers',name:'current v(t)',marker:{color:'red',size:8}}
+  ],{title:'Thresholds over Time',xaxis:{title:'Days'},yaxis:{title:'Value'}});
+}
+
+const pDGInput=document.getElementById('pDG');
+const pSGInput=document.getElementById('pSG');
+const TsInput=document.getElementById('Ts');
+const VsInput=document.getElementById('Vs');
+const VinfInput=document.getElementById('Vinf');
+const TvInput=document.getElementById('Tv');
+const epsInput=document.getElementById('eps');
+const evalTInput=document.getElementById('evalT');
+const RSspan=document.getElementById('RS');
+const RVspan=document.getElementById('RV');
+const tDisp=document.getElementById('tDisp');
+calc();
+</script>
+</body>
+</html>
